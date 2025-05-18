@@ -125,7 +125,21 @@ async def vectorize_image(image: UploadFile = File(...)):
     
     # Convert the image to SVG using VTracer
     try:
-        vtracer.convert_image_to_svg_py(filepath, svg_filepath)
+        vtracer.convert_image_to_svg_py(
+            filepath, 
+            svg_filepath,
+            colormode="color",          # Full-color mode
+            hierarchical="stacked",     # Stacked shapes for compact output
+            mode="spline",              # Smooth curves for sharp edges
+            filter_speckle=6,           # Remove small noise (adjustable)
+            color_precision=7,          # Color accuracy (6-8 bits)
+            layer_difference=16,        # Color layer separation
+            corner_threshold=60,        # Angle to detect corners
+            length_threshold=4.0,       # Min segment length
+            max_iterations=10,          # Curve fitting iterations
+            splice_threshold=45,        # Spline splicing angle
+            path_precision=9            # Decimal precision in paths
+        )
         
         # Check if SVG was created successfully
         if not os.path.exists(svg_filepath):
