@@ -1,5 +1,5 @@
 from fastapi import FastAPI, UploadFile, File, Form, HTTPException
-from fastapi.responses import JSONResponse
+from fastapi.responses import JSONResponse, Response
 from fastapi.middleware.cors import CORSMiddleware
 import os
 import shutil
@@ -104,9 +104,15 @@ async def detect_objects(image: UploadFile = File(...)):
     }
 
 @app.post("/vectorize")
-async def vectorize_image(image: UploadFile = File(...)):
+async def vectorize_image(
+    image: UploadFile = File(...),
+    x1: Optional[float] = Form(None),
+    y1: Optional[float] = Form(None),
+    x2: Optional[float] = Form(None),
+    y2: Optional[float] = Form(None)
+):
     """
-    Convert an image to SVG using VTracer
+    Convert an image to SVG using VTracer, with optional cropping
     """
     # Check if image was uploaded
     if not image:
@@ -119,14 +125,48 @@ async def vectorize_image(image: UploadFile = File(...)):
     with open(filepath, "wb") as buffer:
         shutil.copyfileobj(image.file, buffer)
     
-    # Generate output SVG filename and path
-    svg_filename = os.path.splitext(filename)[0] + '.svg'
-    svg_filepath = os.path.join(SVG_FOLDER, svg_filename)
+    # Process image (crop if coordinates provided)
+    processing_filepath = filepath
     
-    # Convert the image to SVG using VTracer
+    # If crop coordinates are provided, crop the image first
+    if all(coord is not None for coord in [x1, y1, x2, y2]):
+        # Validate coordinates
+        if x1 >= x2 or y1 >= y2:
+            raise HTTPException(status_code=400, detail="Invalid bounding box coordinates. Ensure x1 < x2 and y1 < y2")
+            
+        try:
+            # Read the image
+            img = cv2.imread(filepath)
+            if img is None:
+                raise HTTPException(status_code=500, detail="Failed to read image")
+            
+            # Convert coordinates to integers for cropping
+            height, width = img.shape[:2]
+            x1_int, y1_int = max(0, int(x1)), max(0, int(y1))
+            x2_int, y2_int = min(width, int(x2)), min(height, int(y2))
+            
+            # Crop the image
+            cropped_image = img[y1_int:y2_int, x1_int:x2_int]
+            
+            # Save the cropped image
+            cropped_filename = f"cropped_{filename}"
+            cropped_filepath = os.path.join(OUTPUT_FOLDER, cropped_filename)
+            cv2.imwrite(cropped_filepath, cropped_image)
+            
+            # Use the cropped image for vectorization
+            processing_filepath = cropped_filepath
+            
+        except Exception as e:
+            raise HTTPException(status_code=500, detail=f"Image cropping failed: {str(e)}")
+    
+    # Generate output SVG filename and path
+    base_filename = os.path.basename(processing_filepath)
+    svg_filename = os.path.splitext(base_filename)[0] + '.svg'
+    svg_filepath = os.path.join(SVG_FOLDER, svg_filename)
+      # Convert the image to SVG using VTracer
     try:
         vtracer.convert_image_to_svg_py(
-            filepath, 
+            processing_filepath, 
             svg_filepath,
             colormode="color",          # Full-color mode
             hierarchical="stacked",     # Stacked shapes for compact output
@@ -140,8 +180,7 @@ async def vectorize_image(image: UploadFile = File(...)):
             splice_threshold=45,        # Spline splicing angle
             path_precision=9            # Decimal precision in paths
         )
-        
-        # Check if SVG was created successfully
+          # Check if SVG was created successfully
         if not os.path.exists(svg_filepath):
             raise HTTPException(status_code=500, detail="SVG conversion failed")
         
@@ -149,13 +188,12 @@ async def vectorize_image(image: UploadFile = File(...)):
         with open(svg_filepath, 'r') as svg_file:
             svg_content = svg_file.read()
         
-        # Return the SVG content
-        return {
-            'success': True,
-            'svg_content': svg_content,
-            'svg_path': svg_filepath
-        }
-        
+        # Return the SVG content as a Response with appropriate content type
+        # Using Response instead of JSONResponse because SVG isn't JSON
+        return Response(
+            content=svg_content,
+            media_type="image/svg+xml")
+
     except Exception as e:
         raise HTTPException(status_code=500, detail=f"Vectorization failed: {str(e)}")
 
@@ -202,8 +240,7 @@ async def crop_image(
         height, width = img.shape[:2]
         x1_int, y1_int = max(0, int(x1)), max(0, int(y1))
         x2_int, y2_int = min(width, int(x2)), min(height, int(y2))
-        
-        # Crop the image
+          # Crop the image
         cropped_image = img[y1_int:y2_int, x1_int:x2_int]
         
         # Save the cropped image
@@ -211,14 +248,22 @@ async def crop_image(
         cropped_filepath = os.path.join(OUTPUT_FOLDER, cropped_filename)
         cv2.imwrite(cropped_filepath, cropped_image)
         
-        return {
-            'success': True,
-            'cropped_image_path': cropped_filepath,
-            'dimensions': {
-                'width': x2_int - x1_int,
-                'height': y2_int - y1_int
-            }
-        }
+        # Read the image file to return it directly
+        with open(cropped_filepath, "rb") as image_file:
+            image_content = image_file.read()
+            
+        # Determine the content type based on the file extension
+        content_type = "image/jpeg"  # Default
+        if filename.lower().endswith(".png"):
+            content_type = "image/png"
+        elif filename.lower().endswith(".gif"):
+            content_type = "image/gif"
+        
+        # Return the cropped image directly as a response
+        return Response(
+            content=image_content,
+            media_type=content_type
+        )
         
     except Exception as e:
         raise HTTPException(status_code=500, detail=f"Image cropping failed: {str(e)}")
