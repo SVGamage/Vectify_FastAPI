@@ -104,15 +104,9 @@ async def detect_objects(image: UploadFile = File(...)):
     }
 
 @app.post("/vectorize")
-async def vectorize_image(
-    image: UploadFile = File(...),
-    x1: Optional[float] = Form(None),
-    y1: Optional[float] = Form(None),
-    x2: Optional[float] = Form(None),
-    y2: Optional[float] = Form(None)
-):
+async def vectorize_image(image: UploadFile = File(...)):
     """
-    Convert an image to SVG using VTracer, with optional cropping
+    Convert an image to SVG using VTracer
     """
     # Check if image was uploaded
     if not image:
@@ -125,48 +119,14 @@ async def vectorize_image(
     with open(filepath, "wb") as buffer:
         shutil.copyfileobj(image.file, buffer)
     
-    # Process image (crop if coordinates provided)
-    processing_filepath = filepath
-    
-    # If crop coordinates are provided, crop the image first
-    if all(coord is not None for coord in [x1, y1, x2, y2]):
-        # Validate coordinates
-        if x1 >= x2 or y1 >= y2:
-            raise HTTPException(status_code=400, detail="Invalid bounding box coordinates. Ensure x1 < x2 and y1 < y2")
-            
-        try:
-            # Read the image
-            img = cv2.imread(filepath)
-            if img is None:
-                raise HTTPException(status_code=500, detail="Failed to read image")
-            
-            # Convert coordinates to integers for cropping
-            height, width = img.shape[:2]
-            x1_int, y1_int = max(0, int(x1)), max(0, int(y1))
-            x2_int, y2_int = min(width, int(x2)), min(height, int(y2))
-            
-            # Crop the image
-            cropped_image = img[y1_int:y2_int, x1_int:x2_int]
-            
-            # Save the cropped image
-            cropped_filename = f"cropped_{filename}"
-            cropped_filepath = os.path.join(OUTPUT_FOLDER, cropped_filename)
-            cv2.imwrite(cropped_filepath, cropped_image)
-            
-            # Use the cropped image for vectorization
-            processing_filepath = cropped_filepath
-            
-        except Exception as e:
-            raise HTTPException(status_code=500, detail=f"Image cropping failed: {str(e)}")
-    
     # Generate output SVG filename and path
-    base_filename = os.path.basename(processing_filepath)
-    svg_filename = os.path.splitext(base_filename)[0] + '.svg'
+    svg_filename = os.path.splitext(filename)[0] + '.svg'
     svg_filepath = os.path.join(SVG_FOLDER, svg_filename)
-      # Convert the image to SVG using VTracer
+    
+    # Convert the image to SVG using VTracer
     try:
         vtracer.convert_image_to_svg_py(
-            processing_filepath, 
+            filepath, 
             svg_filepath,
             colormode="color",          # Full-color mode
             hierarchical="stacked",     # Stacked shapes for compact output
