@@ -1,5 +1,5 @@
-# Description: Dockerfile for Python 3.9
-FROM python:3.9
+# Description: Dockerfile for Python 3.12
+FROM python:3.12.2
 
 # Set the working directory
 WORKDIR /code
