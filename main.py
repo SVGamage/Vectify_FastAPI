@@ -124,13 +124,7 @@ async def vectorize_image(image: UploadFile = File(...)):
     # Generate output SVG filename and path
     svg_filename = os.path.splitext(filename)[0] + '.svg'
     svg_filepath = os.path.join(SVG_FOLDER, svg_filename)
-    client = VectorizerAI(
-                api_id=os.getenv("VECTORIZER_API_ID"),
-                api_secret=os.getenv("VECTORIZER_API_SECRET"),
-                mode=os.getenv("VECTORIZER_MODE", "test")
-            )
-    svg = client.vectorize(filepath)
-
+    
     
     # Process the image to remove noise
     try:
@@ -148,6 +142,14 @@ async def vectorize_image(image: UploadFile = File(...)):
         # Save the processed image
         processed_filepath = os.path.join(UPLOAD_FOLDER, f"processed_{filename}")
         cv2.imwrite(processed_filepath, filtered_img)
+        
+        client = VectorizerAI(
+                api_id=os.getenv("VECTORIZER_API_ID"),
+                api_secret=os.getenv("VECTORIZER_API_SECRET"),
+                mode=os.getenv("VECTORIZER_MODE", "test")
+            )
+        svg = client.vectorize(processed_filepath)
+
           # Convert the processed image to SVG using VTracer
         vtracer.convert_image_to_svg_py(
             processed_filepath, 
