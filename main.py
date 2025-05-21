@@ -6,8 +6,10 @@ import shutil
 from ultralytics import YOLO
 import cv2
 from typing import Optional
+from vectorizer_ai import VectorizerAI
 import vtracer
-
+from dotenv import load_dotenv
+load_dotenv()
 app = FastAPI(
     title="YOLO API",
     description="API for object detection, image vectorization, and image cropping"
@@ -122,6 +124,13 @@ async def vectorize_image(image: UploadFile = File(...)):
     # Generate output SVG filename and path
     svg_filename = os.path.splitext(filename)[0] + '.svg'
     svg_filepath = os.path.join(SVG_FOLDER, svg_filename)
+    client = VectorizerAI(
+                api_id=os.getenv("VECTORIZER_API_ID"),
+                api_secret=os.getenv("VECTORIZER_API_SECRET"),
+                mode=os.getenv("VECTORIZER_MODE", "test")
+            )
+    svg = client.vectorize(filepath)
+
     
     # Convert the image to SVG using VTracer
     try:
@@ -151,8 +160,9 @@ async def vectorize_image(image: UploadFile = File(...)):
         # Return the SVG content as a Response with appropriate content type
         # Using Response instead of JSONResponse because SVG isn't JSON
         return Response(
-            content=svg_content,
-            media_type="image/svg+xml")
+            content=svg,
+            media_type="image/svg+xml"
+            )
 
     except Exception as e:
         raise HTTPException(status_code=500, detail=f"Vectorization failed: {str(e)}")
