@@ -3,4 +3,5 @@
 /svg_outputs
 /__pycache__
 */.env
+venv
 .env

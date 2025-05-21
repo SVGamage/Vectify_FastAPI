@@ -108,7 +108,7 @@ async def detect_objects(image: UploadFile = File(...)):
 @app.post("/vectorize")
 async def vectorize_image(image: UploadFile = File(...)):
     """
-    Convert an image to SVG using VTracer
+    Convert an image to SVG using VTracer with noise reduction
     """
     # Check if image was uploaded
     if not image:
@@ -132,10 +132,25 @@ async def vectorize_image(image: UploadFile = File(...)):
     svg = client.vectorize(filepath)
 
     
-    # Convert the image to SVG using VTracer
+    # Process the image to remove noise
     try:
+        # Read the image
+        img = cv2.imread(filepath)
+        if img is None:
+            raise HTTPException(status_code=500, detail="Failed to read image")
+        
+        # Step 1: Apply denoising
+        denoised = cv2.fastNlMeansDenoisingColored(img, None, 10, 10, 7, 21)
+        
+        # Step 2: Apply mean shift filtering for further noise reduction and edge preservation
+        filtered_img = cv2.pyrMeanShiftFiltering(denoised, sp=20, sr=40, maxLevel=2)
+        
+        # Save the processed image
+        processed_filepath = os.path.join(UPLOAD_FOLDER, f"processed_{filename}")
+        cv2.imwrite(processed_filepath, filtered_img)
+          # Convert the processed image to SVG using VTracer
         vtracer.convert_image_to_svg_py(
-            filepath, 
+            processed_filepath, 
             svg_filepath,
             colormode="color",          # Full-color mode
             hierarchical="stacked",     # Stacked shapes for compact output
