@@ -117,6 +117,7 @@ async def vectorize_image(image: UploadFile = File(...)):
     # Save the uploaded image
     filename = image.filename
     filepath = os.path.join(UPLOAD_FOLDER, filename)
+    print(f"Saving uploaded image to {filepath}")
     
     with open(filepath, "wb") as buffer:
         shutil.copyfileobj(image.file, buffer)
@@ -167,12 +168,12 @@ async def vectorize_image(image: UploadFile = File(...)):
         #     path_precision=9            # Decimal precision in paths
         # )
           # Check if SVG was created successfully
-        if not os.path.exists(svg_filepath):
-            raise HTTPException(status_code=500, detail="SVG conversion failed")
+        # if not os.path.exists(svg_filepath):
+        #     raise HTTPException(status_code=500, detail="SVG conversion failed")
         
-        # Read the SVG content
-        with open(svg_filepath, 'r') as svg_file:
-            svg_content = svg_file.read()
+        # # Read the SVG content
+        # with open(svg_filepath, 'r') as svg_file:
+        #     svg_content = svg_file.read()
         
         # Return the SVG content as a Response with appropriate content type
         # Using Response instead of JSONResponse because SVG isn't JSON
@@ -182,6 +183,7 @@ async def vectorize_image(image: UploadFile = File(...)):
             )
 
     except Exception as e:
+        print(f"Error during vectorization: {str(e)}")
         raise HTTPException(status_code=500, detail=f"Vectorization failed: {str(e)}")
 
 @app.get("/health")
