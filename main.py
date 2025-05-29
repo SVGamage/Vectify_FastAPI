@@ -129,43 +129,43 @@ async def vectorize_image(image: UploadFile = File(...)):
     # Process the image to remove noise
     try:
         # Read the image
-        img = cv2.imread(filepath)
-        if img is None:
-            raise HTTPException(status_code=500, detail="Failed to read image")
+        # img = cv2.imread(filepath)
+        # if img is None:
+        #     raise HTTPException(status_code=500, detail="Failed to read image")
         
-        # Step 1: Apply denoising
-        denoised = cv2.fastNlMeansDenoisingColored(img, None, 10, 10, 7, 21)
+        # # Step 1: Apply denoising
+        # denoised = cv2.fastNlMeansDenoisingColored(img, None, 10, 10, 7, 21)
         
-        # Step 2: Apply mean shift filtering for further noise reduction and edge preservation
-        filtered_img = cv2.pyrMeanShiftFiltering(denoised, sp=20, sr=40, maxLevel=2)
+        # # Step 2: Apply mean shift filtering for further noise reduction and edge preservation
+        # filtered_img = cv2.pyrMeanShiftFiltering(denoised, sp=20, sr=40, maxLevel=2)
         
-        # Save the processed image
-        processed_filepath = os.path.join(UPLOAD_FOLDER, f"processed_{filename}")
-        cv2.imwrite(processed_filepath, filtered_img)
+        # # Save the processed image
+        # processed_filepath = os.path.join(UPLOAD_FOLDER, f"processed_{filename}")
+        # cv2.imwrite(processed_filepath, filtered_img)
         
         client = VectorizerAI(
                 api_id=os.getenv("VECTORIZER_API_ID"),
                 api_secret=os.getenv("VECTORIZER_API_SECRET"),
                 mode=os.getenv("VECTORIZER_MODE", "production")
             )
-        svg = client.vectorize(processed_filepath)
+        svg = client.vectorize(filepath)
 
           # Convert the processed image to SVG using VTracer
-        vtracer.convert_image_to_svg_py(
-            processed_filepath, 
-            svg_filepath,
-            colormode="color",          # Full-color mode
-            hierarchical="stacked",     # Stacked shapes for compact output
-            mode="spline",              # Smooth curves for sharp edges
-            filter_speckle=6,           # Remove small noise (adjustable)
-            color_precision=7,          # Color accuracy (6-8 bits)
-            layer_difference=16,        # Color layer separation
-            corner_threshold=60,        # Angle to detect corners
-            length_threshold=4.0,       # Min segment length
-            max_iterations=10,          # Curve fitting iterations
-            splice_threshold=45,        # Spline splicing angle
-            path_precision=9            # Decimal precision in paths
-        )
+        # vtracer.convert_image_to_svg_py(
+        #     processed_filepath, 
+        #     svg_filepath,
+        #     colormode="color",          # Full-color mode
+        #     hierarchical="stacked",     # Stacked shapes for compact output
+        #     mode="spline",              # Smooth curves for sharp edges
+        #     filter_speckle=6,           # Remove small noise (adjustable)
+        #     color_precision=7,          # Color accuracy (6-8 bits)
+        #     layer_difference=16,        # Color layer separation
+        #     corner_threshold=60,        # Angle to detect corners
+        #     length_threshold=4.0,       # Min segment length
+        #     max_iterations=10,          # Curve fitting iterations
+        #     splice_threshold=45,        # Spline splicing angle
+        #     path_precision=9            # Decimal precision in paths
+        # )
           # Check if SVG was created successfully
         if not os.path.exists(svg_filepath):
             raise HTTPException(status_code=500, detail="SVG conversion failed")
