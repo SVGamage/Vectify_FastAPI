@@ -143,12 +143,12 @@ async def vectorize_image(image: UploadFile = File(...)):
         processed_filepath = os.path.join(UPLOAD_FOLDER, f"processed_{filename}")
         cv2.imwrite(processed_filepath, filtered_img)
         
-        # client = VectorizerAI(
-        #         api_id=os.getenv("VECTORIZER_API_ID"),
-        #         api_secret=os.getenv("VECTORIZER_API_SECRET"),
-        #         mode=os.getenv("VECTORIZER_MODE", "test")
-        #     )
-        # svg = client.vectorize(processed_filepath)
+        client = VectorizerAI(
+                api_id=os.getenv("VECTORIZER_API_ID"),
+                api_secret=os.getenv("VECTORIZER_API_SECRET"),
+                mode=os.getenv("VECTORIZER_MODE", "production")
+            )
+        svg = client.vectorize(processed_filepath)
 
           # Convert the processed image to SVG using VTracer
         vtracer.convert_image_to_svg_py(
@@ -177,7 +177,7 @@ async def vectorize_image(image: UploadFile = File(...)):
         # Return the SVG content as a Response with appropriate content type
         # Using Response instead of JSONResponse because SVG isn't JSON
         return Response(
-            content=svg_content,
+            content=svg,
             media_type="image/svg+xml"
             )
 
