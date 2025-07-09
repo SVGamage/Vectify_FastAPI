@@ -210,18 +210,11 @@ async def vectorize_image(image: UploadFile = File(...)):
         if img is None:
             raise HTTPException(status_code=500, detail="Failed to read image")
         
-        # Step 2: Apply denoising
-        logger.info("Applying denoising filters")
-        denoised = cv2.fastNlMeansDenoisingColored(img, None, 10, 10, 7, 21)
-        
-        # Step 3: Apply mean shift filtering for further noise reduction and edge preservation
-        filtered_img = cv2.pyrMeanShiftFiltering(denoised, sp=20, sr=40, maxLevel=2)
-        
-        # Save the processed image
+        # Save the image for vectorization (either upscaled or original)
         processed_filepath = os.path.join(UPLOAD_FOLDER, f"processed_{filename}")
-        cv2.imwrite(processed_filepath, filtered_img)
+        cv2.imwrite(processed_filepath, img)
         
-        # Step 4: Vectorize using VectorizerAI
+        # Step 2: Vectorize using VectorizerAI
         logger.info("Starting vectorization process")
         client = VectorizerAI(
                 api_id=os.getenv("VECTORIZER_API_ID"),
