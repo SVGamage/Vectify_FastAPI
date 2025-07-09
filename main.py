@@ -9,10 +9,44 @@ from typing import Optional
 from vectorizer_ai import VectorizerAI
 import vtracer
 from dotenv import load_dotenv
+from PIL import Image
+import torch
+import io
+from RealESRGAN import RealESRGAN
+import logging
+
+# Configure logging
+logging.basicConfig(level=logging.INFO)
+logger = logging.getLogger(__name__)
+
 load_dotenv()
+
+# Global variables for Real-ESRGAN model
+device = None
+realesrgan_model = None
+
+def load_realesrgan_model():
+    """Load the Real-ESRGAN model with x4plus_anime_6B weights"""
+    global device, realesrgan_model
+    
+    device = torch.device('cuda' if torch.cuda.is_available() else 'cpu')
+    logger.info(f"Using device: {device}")
+    
+    # Initialize model with 6 blocks for anime model
+    realesrgan_model = RealESRGAN(device, scale=4, model_name='x4plus_anime_6B')
+    
+    # Load the anime model weights
+    model_path = 'weights/RealESRGAN_x4plus_anime_6B.pth'
+    if os.path.exists(model_path):
+        realesrgan_model.load_weights(model_path, download=False)
+        logger.info("Successfully loaded RealESRGAN_x4plus_anime_6B model")
+    else:
+        logger.warning(f"Model weights not found at {model_path}. Upscaling will be skipped.")
+        realesrgan_model = None
+
 app = FastAPI(
-    title="YOLO API",
-    description="API for object detection, image vectorization, and image cropping"
+    title="YOLO API with Real-ESRGAN",
+    description="API for object detection, image vectorization with upscaling, and image cropping"
 )
 # Enable CORS
 app.add_middleware(
@@ -34,9 +68,19 @@ for folder in [UPLOAD_FOLDER, OUTPUT_FOLDER, SVG_FOLDER]:
 
 # Load the YOLO model
 model = YOLO("./model/best.pt", task='detect')
+
+@app.on_event("startup")
+async def startup_event():
+    """Load Real-ESRGAN model on startup"""
+    try:
+        load_realesrgan_model()
+    except Exception as e:
+        logger.error(f"Failed to load Real-ESRGAN model: {e}")
+        # Don't raise the error, just log it so the app can still start
+
 @app.get("/")
 def home():
-    return {"message": "Welcome to the Vectify API....."}
+    return {"message": "Welcome to the Vectify API with Real-ESRGAN upscaling....."}
 
 @app.post("/detect")
 async def detect_objects(image: UploadFile = File(...)):
@@ -108,7 +152,7 @@ async def detect_objects(image: UploadFile = File(...)):
 @app.post("/vectorize")
 async def vectorize_image(image: UploadFile = File(...)):
     """
-    Convert an image to SVG using VTracer with noise reduction
+    Convert an image to SVG with upscaling and noise reduction
     """
     # Check if image was uploaded
     if not image:
@@ -117,7 +161,7 @@ async def vectorize_image(image: UploadFile = File(...)):
     # Save the uploaded image
     filename = image.filename
     filepath = os.path.join(UPLOAD_FOLDER, filename)
-    print(f"Saving uploaded image to {filepath}")
+    logger.info(f"Saving uploaded image to {filepath}")
     
     with open(filepath, "wb") as buffer:
         shutil.copyfileobj(image.file, buffer)
@@ -126,24 +170,59 @@ async def vectorize_image(image: UploadFile = File(...)):
     svg_filename = os.path.splitext(filename)[0] + '.svg'
     svg_filepath = os.path.join(SVG_FOLDER, svg_filename)
     
-    
-    # Process the image to remove noise
     try:
-        # Read the image
-        img = cv2.imread(filepath)
+        # Step 1: Upscale the image using Real-ESRGAN if model is available
+        if realesrgan_model is not None:
+            logger.info("Upscaling image using Real-ESRGAN")
+            
+            # Read image with PIL for upscaling
+            pil_image = Image.open(filepath)
+            
+            # Validate image size for upscaling
+            width, height = pil_image.size
+            if width >= 5000 or height >= 5000:
+                logger.warning("Image too large for upscaling, skipping upscaling step")
+                upscaled_image = pil_image
+            elif width < 10 or height < 10:
+                logger.warning("Image too small for upscaling, skipping upscaling step")
+                upscaled_image = pil_image
+            else:
+                # Convert to RGB if necessary
+                if pil_image.mode != 'RGB':
+                    pil_image = pil_image.convert('RGB')
+                
+                logger.info(f"Upscaling image: {width}x{height} -> {width*4}x{height*4}")
+                upscaled_image = realesrgan_model.predict(pil_image)
+            
+            # Save upscaled image
+            upscaled_filename = f"upscaled_{filename}"
+            upscaled_filepath = os.path.join(OUTPUT_FOLDER, upscaled_filename)
+            upscaled_image.save(upscaled_filepath)
+            
+            # Use upscaled image for further processing
+            img = cv2.imread(upscaled_filepath)
+            logger.info("Image upscaling completed successfully")
+        else:
+            logger.info("Real-ESRGAN model not available, skipping upscaling")
+            # Read the original image
+            img = cv2.imread(filepath)
+        
         if img is None:
             raise HTTPException(status_code=500, detail="Failed to read image")
         
-        # Step 1: Apply denoising
+        # Step 2: Apply denoising
+        logger.info("Applying denoising filters")
         denoised = cv2.fastNlMeansDenoisingColored(img, None, 10, 10, 7, 21)
         
-        # Step 2: Apply mean shift filtering for further noise reduction and edge preservation
+        # Step 3: Apply mean shift filtering for further noise reduction and edge preservation
         filtered_img = cv2.pyrMeanShiftFiltering(denoised, sp=20, sr=40, maxLevel=2)
         
         # Save the processed image
         processed_filepath = os.path.join(UPLOAD_FOLDER, f"processed_{filename}")
         cv2.imwrite(processed_filepath, filtered_img)
         
+        # Step 4: Vectorize using VectorizerAI
+        logger.info("Starting vectorization process")
         client = VectorizerAI(
                 api_id=os.getenv("VECTORIZER_API_ID"),
                 api_secret=os.getenv("VECTORIZER_API_SECRET"),
@@ -176,14 +255,14 @@ async def vectorize_image(image: UploadFile = File(...)):
         #     svg_content = svg_file.read()
         
         # Return the SVG content as a Response with appropriate content type
-        # Using Response instead of JSONResponse because SVG isn't JSON
+        logger.info("Vectorization completed successfully")
         return Response(
             content=svg,
             media_type="image/svg+xml"
             )
 
     except Exception as e:
-        print(f"Error during vectorization: {str(e)}")
+        logger.error(f"Error during vectorization: {str(e)}")
         raise HTTPException(status_code=500, detail=f"Vectorization failed: {str(e)}")
 
 @app.get("/health")
@@ -191,7 +270,12 @@ async def health_check():
     """
     Health check endpoint
     """
-    return {'status': 'healthy', 'model': 'YOLO object detection'}
+    return {
+        'status': 'healthy', 
+        'yolo_model': 'YOLO object detection',
+        'realesrgan_model': 'available' if realesrgan_model is not None else 'not available',
+        'device': str(device) if device is not None else 'unknown'
+    }
 
 @app.post("/crop")
 async def crop_image(

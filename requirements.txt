@@ -5,4 +5,12 @@ ultralytics
 opencv-python
 vtracer
 vectorizer-ai
-dotenv
+python-dotenv
+torch
+torchvision
+Pillow
+basicsr
+facexlib
+gfpgan
+realesrgan
+huggingface_hub
