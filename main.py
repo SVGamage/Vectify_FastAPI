@@ -171,12 +171,27 @@ async def vectorize_image(image: UploadFile = File(...)):
     svg_filepath = os.path.join(SVG_FOLDER, svg_filename)
     
     try:
-        # Step 1: Upscale the image using Real-ESRGAN if model is available
+        # Step 1: Read and preprocess the image
+        img = cv2.imread(filepath)
+        if img is None:
+            raise HTTPException(status_code=500, detail="Failed to read image")
+        
+        # Apply denoising
+        denoised = cv2.fastNlMeansDenoisingColored(img, None, 10, 10, 7, 21)
+        
+        # Apply mean shift filtering for further noise reduction and edge preservation
+        filtered_img = cv2.pyrMeanShiftFiltering(denoised, sp=20, sr=40, maxLevel=2)
+        
+        # Save the processed image
+        processed_filepath = os.path.join(UPLOAD_FOLDER, f"processed_{filename}")
+        cv2.imwrite(processed_filepath, filtered_img)
+        
+        # Step 2: Upscale the processed image using Real-ESRGAN if model is available
         if realesrgan_model is not None:
-            logger.info("Upscaling image using Real-ESRGAN")
+            logger.info("Upscaling processed image using Real-ESRGAN")
             
-            # Read image with PIL for upscaling
-            pil_image = Image.open(filepath)
+            # Read processed image with PIL for upscaling
+            pil_image = Image.open(processed_filepath)
             
             # Validate image size for upscaling
             width, height = pil_image.size
@@ -199,29 +214,22 @@ async def vectorize_image(image: UploadFile = File(...)):
             upscaled_filepath = os.path.join(OUTPUT_FOLDER, upscaled_filename)
             upscaled_image.save(upscaled_filepath)
             
-            # Use upscaled image for further processing
-            img = cv2.imread(upscaled_filepath)
+            # Use upscaled image for vectorization
+            final_image_path = upscaled_filepath
             logger.info("Image upscaling completed successfully")
         else:
-            logger.info("Real-ESRGAN model not available, skipping upscaling")
-            # Read the original image
-            img = cv2.imread(filepath)
+            logger.info("Real-ESRGAN model not available, using processed image")
+            # Use the processed (denoised) image for vectorization
+            final_image_path = processed_filepath
         
-        if img is None:
-            raise HTTPException(status_code=500, detail="Failed to read image")
-        
-        # Save the image for vectorization (either upscaled or original)
-        processed_filepath = os.path.join(UPLOAD_FOLDER, f"processed_{filename}")
-        cv2.imwrite(processed_filepath, img)
-        
-        # Step 2: Vectorize using VectorizerAI
+        # Step 3: Vectorize using VectorizerAI
         logger.info("Starting vectorization process")
         client = VectorizerAI(
                 api_id=os.getenv("VECTORIZER_API_ID"),
                 api_secret=os.getenv("VECTORIZER_API_SECRET"),
                 mode=os.getenv("VECTORIZER_MODE", "production")
             )
-        svg = client.vectorize(processed_filepath)
+        svg = client.vectorize(final_image_path)
 
           # Convert the processed image to SVG using VTracer
         # vtracer.convert_image_to_svg_py(
@@ -333,3 +341,90 @@ async def crop_image(
         
     except Exception as e:
         raise HTTPException(status_code=500, detail=f"Image cropping failed: {str(e)}")
+
+@app.post("/upscale")
+async def upscale_image(image: UploadFile = File(...)):
+    """
+    Upscale an image using Real-ESRGAN x4plus_anime_6B model
+    
+    Args:
+        image: Image file to upscale (supported formats: JPEG, PNG, WebP)
+    
+    Returns:
+        Upscaled image as PNG
+    """
+    if realesrgan_model is None:
+        raise HTTPException(status_code=500, detail="Real-ESRGAN model not loaded")
+    
+    # Check if image was uploaded
+    if not image:
+        raise HTTPException(status_code=400, detail="No image provided")
+    
+    # Validate file type
+    allowed_types = ["image/jpeg", "image/png", "image/webp", "image/jpg"]
+    if image.content_type not in allowed_types:
+        # Also try to detect by file extension as fallback
+        filename = image.filename.lower() if image.filename else ""
+        allowed_extensions = ['.jpg', '.jpeg', '.png', '.webp']
+        if not any(filename.endswith(ext) for ext in allowed_extensions):
+            raise HTTPException(
+                status_code=400, 
+                detail=f"Unsupported file type: {image.content_type}. Please upload JPEG, PNG, or WebP images."
+            )
+    
+    try:
+        # Save the uploaded image
+        filename = image.filename
+        filepath = os.path.join(UPLOAD_FOLDER, filename)
+        logger.info(f"Saving uploaded image to {filepath}")
+        
+        with open(filepath, "wb") as buffer:
+            shutil.copyfileobj(image.file, buffer)
+        
+        # Read and validate image
+        pil_image = Image.open(filepath)
+        
+        # Check image size limitations
+        width, height = pil_image.size
+        if width >= 5000 or height >= 5000:
+            raise HTTPException(
+                status_code=400, 
+                detail="Image too large. Maximum dimensions: 5000x5000 pixels."
+            )
+        
+        if width < 10 or height < 10:
+            raise HTTPException(
+                status_code=400, 
+                detail="Image too small. Minimum dimensions: 10x10 pixels."
+            )
+        
+        # Convert to RGB if necessary
+        if pil_image.mode != 'RGB':
+            pil_image = pil_image.convert('RGB')
+        
+        logger.info(f"Processing image: {width}x{height} -> {width*4}x{height*4}")
+        
+        # Perform upscaling
+        upscaled_image = realesrgan_model.predict(pil_image)
+        
+        # Save upscaled image
+        upscaled_filename = f"upscaled_{filename}"
+        upscaled_filepath = os.path.join(OUTPUT_FOLDER, upscaled_filename)
+        upscaled_image.save(upscaled_filepath)
+        
+        # Read the upscaled image file to return it directly
+        with open(upscaled_filepath, "rb") as image_file:
+            image_content = image_file.read()
+        
+        logger.info("Image upscaling completed successfully")
+        
+        # Return the upscaled image directly as a response
+        return Response(
+            content=image_content,
+            media_type="image/png",
+            headers={"Content-Disposition": f"attachment; filename=upscaled_{filename}"}
+        )
+        
+    except Exception as e:
+        logger.error(f"Error processing image: {str(e)}")
+        raise HTTPException(status_code=500, detail=f"Error processing image: {str(e)}")
