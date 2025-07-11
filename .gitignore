@@ -2,6 +2,7 @@
 /uploads
 /svg_outputs
 /__pycache__
+RealESRGAN/__pycache__
 */.env
 venv
 .env

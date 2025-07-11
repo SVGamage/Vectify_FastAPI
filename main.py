@@ -171,56 +171,56 @@ async def vectorize_image(image: UploadFile = File(...)):
     svg_filepath = os.path.join(SVG_FOLDER, svg_filename)
     
     try:
-        # Step 1: Read and preprocess the image
-        img = cv2.imread(filepath)
-        if img is None:
-            raise HTTPException(status_code=500, detail="Failed to read image")
+        # # Step 1: Read and preprocess the image
+        # img = cv2.imread(filepath)
+        # if img is None:
+        #     raise HTTPException(status_code=500, detail="Failed to read image")
         
-        # Apply denoising
-        denoised = cv2.fastNlMeansDenoisingColored(img, None, 10, 10, 7, 21)
+        # # Apply denoising
+        # denoised = cv2.fastNlMeansDenoisingColored(img, None, 10, 10, 7, 21)
         
-        # Apply mean shift filtering for further noise reduction and edge preservation
-        filtered_img = cv2.pyrMeanShiftFiltering(denoised, sp=20, sr=40, maxLevel=2)
+        # # Apply mean shift filtering for further noise reduction and edge preservation
+        # filtered_img = cv2.pyrMeanShiftFiltering(denoised, sp=20, sr=40, maxLevel=2)
         
-        # Save the processed image
-        processed_filepath = os.path.join(UPLOAD_FOLDER, f"processed_{filename}")
-        cv2.imwrite(processed_filepath, filtered_img)
+        # # Save the processed image
+        # processed_filepath = os.path.join(UPLOAD_FOLDER, f"processed_{filename}")
+        # cv2.imwrite(processed_filepath, filtered_img)
         
-        # Step 2: Upscale the processed image using Real-ESRGAN if model is available
-        if realesrgan_model is not None:
-            logger.info("Upscaling processed image using Real-ESRGAN")
+        # # Step 2: Upscale the processed image using Real-ESRGAN if model is available
+        # if realesrgan_model is not None:
+        #     logger.info("Upscaling processed image using Real-ESRGAN")
             
-            # Read processed image with PIL for upscaling
-            pil_image = Image.open(processed_filepath)
+        #     # Read processed image with PIL for upscaling
+        #     pil_image = Image.open(processed_filepath)
             
-            # Validate image size for upscaling
-            width, height = pil_image.size
-            if width >= 5000 or height >= 5000:
-                logger.warning("Image too large for upscaling, skipping upscaling step")
-                upscaled_image = pil_image
-            elif width < 10 or height < 10:
-                logger.warning("Image too small for upscaling, skipping upscaling step")
-                upscaled_image = pil_image
-            else:
-                # Convert to RGB if necessary
-                if pil_image.mode != 'RGB':
-                    pil_image = pil_image.convert('RGB')
+        #     # Validate image size for upscaling
+        #     width, height = pil_image.size
+        #     if width >= 5000 or height >= 5000:
+        #         logger.warning("Image too large for upscaling, skipping upscaling step")
+        #         upscaled_image = pil_image
+        #     elif width < 10 or height < 10:
+        #         logger.warning("Image too small for upscaling, skipping upscaling step")
+        #         upscaled_image = pil_image
+        #     else:
+        #         # Convert to RGB if necessary
+        #         if pil_image.mode != 'RGB':
+        #             pil_image = pil_image.convert('RGB')
                 
-                logger.info(f"Upscaling image: {width}x{height} -> {width*4}x{height*4}")
-                upscaled_image = realesrgan_model.predict(pil_image)
+        #         logger.info(f"Upscaling image: {width}x{height} -> {width*4}x{height*4}")
+        #         upscaled_image = realesrgan_model.predict(pil_image)
             
-            # Save upscaled image
-            upscaled_filename = f"upscaled_{filename}"
-            upscaled_filepath = os.path.join(OUTPUT_FOLDER, upscaled_filename)
-            upscaled_image.save(upscaled_filepath)
+        #     # Save upscaled image
+        #     upscaled_filename = f"upscaled_{filename}"
+        #     upscaled_filepath = os.path.join(OUTPUT_FOLDER, upscaled_filename)
+        #     upscaled_image.save(upscaled_filepath)
             
-            # Use upscaled image for vectorization
-            final_image_path = upscaled_filepath
-            logger.info("Image upscaling completed successfully")
-        else:
-            logger.info("Real-ESRGAN model not available, using processed image")
-            # Use the processed (denoised) image for vectorization
-            final_image_path = processed_filepath
+        #     # Use upscaled image for vectorization
+        #     final_image_path = upscaled_filepath
+        #     logger.info("Image upscaling completed successfully")
+        # else:
+        #     logger.info("Real-ESRGAN model not available, using processed image")
+        #     # Use the processed (denoised) image for vectorization
+        #     final_image_path = processed_filepath
         
         # Step 3: Vectorize using VectorizerAI
         logger.info("Starting vectorization process")
@@ -229,7 +229,8 @@ async def vectorize_image(image: UploadFile = File(...)):
                 api_secret=os.getenv("VECTORIZER_API_SECRET"),
                 mode=os.getenv("VECTORIZER_MODE", "production")
             )
-        svg = client.vectorize(final_image_path)
+        # svg = client.vectorize(final_image_path)
+        svg = client.vectorize(filepath)
 
           # Convert the processed image to SVG using VTracer
         # vtracer.convert_image_to_svg_py(
